@@ -1,24 +1,61 @@
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+---
+# Source: appdev/templates/application.yaml
+apiVersion: serving.knative.dev/v1
+kind: Service
 metadata:
-  name: appdev-development-environment
-  namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  name: appdev
+  labels:
+    chart: "appdev-0.0.0-dev"
+  annotations:
 spec:
-  project: development-env
-  source:
-    path: helm
-    repoURL: https://github.com/niranjan-mookambika/appdev.git
-    targetRevision: v0.20.0
-    helm:
-      version: v3
-      values: |
-        local: true
-  destination:
-    namespace: development-env
-    server: https://kubernetes.default.svc
-  syncPolicy:
-    automated:
-      selfHeal: true
-      prune: true
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+    spec:
+      containers:
+      - image: "ghcr.io/niranjan-mookambika/appdev:master"
+        ports:
+        - containerPort: 8085
+        env:
+        - name: ENVIRONMENT_NAME
+          valueFrom:
+            secretKeyRef:
+              name: appdev-appdev
+              key: environment
+        livenessProbe:
+          httpGet:
+            path: /
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        readinessProbe:
+          httpGet:
+            path: /
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 50m
+            memory: 256Mi
+---
+# Source: appdev/templates/external-secret-appdev.yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: appdev-appdev
+spec:
+  secretStoreRef:
+    name: fake
+    kind: ClusterSecretStore
+  target:
+    name: appdev-appdev
+  dataFrom:
+  - extract:
+      key: /appdev
